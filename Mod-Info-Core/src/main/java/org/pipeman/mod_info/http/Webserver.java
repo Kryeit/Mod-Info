@@ -1,8 +1,9 @@
 package org.pipeman.mod_info.http;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+import io.javalin.http.Handler;
+import io.javalin.http.Header;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.pipeman.mod_info.PresetSupplier;
@@ -13,34 +14,27 @@ import org.pipeman.mod_info.Zipper;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URLDecoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public class Webserver {
     private final PresetSupplier supplier = new PresetSupplier();
-    private HttpServer server;
+    private Javalin server;
 
     public void start(int port, boolean prepareZip) throws IOException {
-        server = HttpServer.create(new InetSocketAddress(port), 0);
-        server.createContext("/", new FileHandler(Paths.get("index.html")));
-        server.createContext("/api/download", new DownloadHandler(supplier, prepareZip));
-        server.createContext("/api/info", new InfoHandler(supplier));
-        server.start();
+        server = Javalin.create(c -> c.showJavalinBanner = false);
+        server.get("/", new FileHandler(Paths.get("index.html")));
+        server.get("/api/download", new DownloadHandler(supplier, prepareZip));
+        server.get("/api/info", new InfoHandler(supplier));
+        server.start(port);
     }
 
     public void stop() {
-        server.stop(42);
+        server.stop();
     }
 
-    private static class FileHandler implements HttpHandler {
+    private static class FileHandler implements Handler {
         private final String index;
 
         private FileHandler(Path file) throws IOException {
@@ -51,13 +45,12 @@ public class Webserver {
         }
 
         @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            sendResponse(exchange, 200, index);
-//            sendResponse(exchange, 200, Files.readAllBytes(Paths.get("index.html")));
+        public void handle(Context ctx) {
+            ctx.html(index);
         }
     }
 
-    private static class DownloadHandler implements HttpHandler {
+    private static class DownloadHandler implements Handler {
         private final PresetSupplier supplier;
         private final boolean prepareZip;
 
@@ -67,41 +60,27 @@ public class Webserver {
         }
 
         @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String hashes = splitQuery(exchange.getRequestURI()).get("hashes");
+        public void handle(Context ctx) throws IOException {
+            String hashes = ctx.queryParam("hashes");
             if (hashes == null) {
-                sendResponse(exchange, 400, "Missing query parameter 'hashes'");
+                ctx.status(400).result("Missing query parameter 'hashes'");
                 return;
             }
 
-            exchange.getResponseHeaders().add("Content-Disposition", "attachment; filename=\"mods.zip\"");
-            exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
+            ctx.header(Header.CONTENT_DISPOSITION, "attachment; filename=\"mods.zip\"");
+            ctx.header(Header.CONTENT_TYPE, "application/octet-stream");
 
             if (prepareZip) {
                 ByteArrayOutputStream os = new ByteArrayOutputStream();
                 Zipper.getZip(Utils.map(hashes.split(","), String::trim), supplier.getPresets(), os);
-                sendResponse(exchange, 200, os.toByteArray());
+                ctx.result(os.toByteArray());
             } else {
-                exchange.sendResponseHeaders(200, 0);
-                Zipper.getZip(Utils.map(hashes.split(","), String::trim), supplier.getPresets(), exchange.getResponseBody());
-            }
-        }
-
-        private Map<String, String> splitQuery(URI url) {
-            try {
-                Map<String, String> queryPairs = new LinkedHashMap<>();
-                for (String pair : url.getQuery().split("&")) {
-                    int idx = pair.indexOf("=");
-                    queryPairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
-                }
-                return queryPairs;
-            } catch (Exception ignored) {
-                return new HashMap<>();
+                Zipper.getZip(Utils.map(hashes.split(","), String::trim), supplier.getPresets(), ctx.outputStream());
             }
         }
     }
 
-    private static class InfoHandler implements HttpHandler {
+    private static class InfoHandler implements Handler {
         private final PresetSupplier supplier;
 
         private InfoHandler(PresetSupplier supplier) {
@@ -109,7 +88,7 @@ public class Webserver {
         }
 
         @Override
-        public void handle(HttpExchange exchange) throws IOException {
+        public void handle(Context ctx) {
             JSONArray presets = new JSONArray();
             for (Preset preset : supplier.getPresets()) {
                 JSONArray mods = new JSONArray();
@@ -128,18 +107,7 @@ public class Webserver {
                 presets.put(presetObject);
             }
 
-            sendResponse(exchange, 200, new JSONObject().put("presets", presets).toString());
+            ctx.json(new JSONObject().put("presets", presets).toString());
         }
-    }
-
-    private static void sendResponse(HttpExchange exchange, int code, String message) throws IOException {
-        sendResponse(exchange, code, message.getBytes());
-    }
-
-    private static void sendResponse(HttpExchange exchange, int code, byte[] message) throws IOException {
-        exchange.sendResponseHeaders(code, message.length);
-        OutputStream os = exchange.getResponseBody();
-        os.write(message);
-        os.close();
     }
 }
