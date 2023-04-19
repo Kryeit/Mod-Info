@@ -1,0 +1,19 @@
+{
+  "presets": [
+    {
+      "name": "Required Mods Example",
+      "required": true,
+      "include": [
+      ],
+      "exclude": [
+      ]
+    },
+    {
+      "name": "Optional Mods Example",
+      "include": [
+      ],
+      "exclude": [
+      ]
+    }
+  ]
+}
