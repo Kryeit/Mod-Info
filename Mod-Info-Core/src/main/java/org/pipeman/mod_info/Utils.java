@@ -5,6 +5,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class Utils {
     public static <T, R> List<R> map(List<T> list, Function<T, R> mappingFunction) {
@@ -19,6 +20,16 @@ public class Utils {
         List<R> output = new ArrayList<>(list.length);
         for (T t : list) {
             output.add(mappingFunction.apply(t));
+        }
+        return output;
+    }
+
+    public static <T> List<T> filter(List<T> list, Predicate<T> filterFunction) {
+        List<T> output = new ArrayList<>();
+        for (T t : list) {
+            if (filterFunction.test(t)) {
+                output.add(t);
+            }
         }
         return output;
     }

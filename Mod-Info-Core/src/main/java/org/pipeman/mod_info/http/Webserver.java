@@ -14,18 +14,21 @@ import org.pipeman.mod_info.Zipper;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.MessageFormat;
+import java.util.List;
 
 public class Webserver {
     private final PresetSupplier supplier = new PresetSupplier();
     private Javalin server;
 
-    public void start(int port, boolean prepareZip) throws IOException {
+    public void start(int port, boolean prepareZip, Path multiMcPack, String fileName) throws IOException {
         server = Javalin.create(c -> c.showJavalinBanner = false);
         server.get("/", new FileHandler(Paths.get("index.html")));
-        server.get("/api/download", new DownloadHandler(supplier, prepareZip));
+        server.get("/api/download", new DownloadHandler(supplier, prepareZip, multiMcPack, fileName));
         server.get("/api/info", new InfoHandler(supplier));
         server.start(port);
     }
@@ -53,10 +56,14 @@ public class Webserver {
     private static class DownloadHandler implements Handler {
         private final PresetSupplier supplier;
         private final boolean prepareZip;
+        private final Path multiMcPackFile;
+        private final String fileName;
 
-        private DownloadHandler(PresetSupplier supplier, boolean prepareZip) {
+        private DownloadHandler(PresetSupplier supplier, boolean prepareZip, Path multiMcPackFile, String fileName) {
             this.supplier = supplier;
             this.prepareZip = prepareZip;
+            this.multiMcPackFile = multiMcPackFile;
+            this.fileName = fileName;
         }
 
         @Override
@@ -67,15 +74,26 @@ public class Webserver {
                 return;
             }
 
-            ctx.header(Header.CONTENT_DISPOSITION, "attachment; filename=\"mods.zip\"");
+            ctx.header(Header.CONTENT_DISPOSITION, MessageFormat.format("attachment; filename=\"{0}\"", fileName));
             ctx.header(Header.CONTENT_TYPE, "application/octet-stream");
 
+            boolean multiMCPack = Boolean.parseBoolean(ctx.queryParam("multimc-pack"));
             if (prepareZip) {
                 ByteArrayOutputStream os = new ByteArrayOutputStream();
-                Zipper.getZip(Utils.map(hashes.split(","), String::trim), supplier.getPresets(), os);
+                upload(hashes, multiMCPack, os);
                 ctx.result(os.toByteArray());
             } else {
-                Zipper.getZip(Utils.map(hashes.split(","), String::trim), supplier.getPresets(), ctx.outputStream());
+                upload(hashes, multiMCPack, ctx.outputStream());
+            }
+        }
+
+        private void upload(String hashes, boolean multiMCPack, OutputStream outputStream) throws IOException {
+            List<String> mappedHashes = Utils.map(hashes.split(","), String::trim);
+            List<Preset> presets = supplier.getPresets();
+            if (multiMCPack) {
+                Zipper.addModsToExistingZip(mappedHashes, presets, multiMcPackFile.toFile(), outputStream);
+            } else {
+                Zipper.getZip(mappedHashes, presets, outputStream);
             }
         }
     }

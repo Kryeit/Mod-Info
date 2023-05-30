@@ -96,7 +96,8 @@
     <iframe hidden="" id="download-frame"></iframe>
     <div class="mod-list" id="mod-list">
     </div>
-    <input type="button" onclick="download()" class="download-btn" value="Download">
+    <input type="button" onclick="download(false)" class="download-btn" value="Download ZIP file">
+    <input type="button" onclick="download(true)" class="download-btn" value="Download MultiMC/Prism Launcher Instance">
 </div>
 </body>
 <script>
@@ -181,8 +182,8 @@
         }
     }));
 
-    function download() {
-        document.getElementById("download-frame").src = `api/download/?hashes=${additionalMods.join(",")}`
+    function download(multimc) {
+        document.getElementById("download-frame").src = `api/download/?multimc-pack=${multimc}&hashes=${additionalMods.join(",")}`
     }
 </script>
 </html>
